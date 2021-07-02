@@ -963,9 +963,10 @@ impl<T> Option<T> {
     /// assert_eq!(y, None);
     /// ```
     #[inline]
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn take(&mut self) -> Option<T> {
-        mem::take(self)
+    pub const fn take(&mut self) -> Option<T> {
+        core::mem::replace(self, None)
     }
 
     /// Replaces the actual value in the option by the value given in parameter,
@@ -986,8 +987,9 @@ impl<T> Option<T> {
     /// assert_eq!(old, None);
     /// ```
     #[inline]
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "option_replace", since = "1.31.0")]
-    pub fn replace(&mut self, value: T) -> Option<T> {
+    pub const fn replace(&mut self, value: T) -> Option<T> {
         mem::replace(self, Some(value))
     }
 
@@ -1064,9 +1066,13 @@ impl<T: Copy> Option<&T> {
     /// let copied = opt_x.copied();
     /// assert_eq!(copied, Some(12));
     /// ```
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "copied", since = "1.35.0")]
-    pub fn copied(self) -> Option<T> {
-        self.map(|&t| t)
+    pub const fn copied(self) -> Option<T> {
+        match self {
+            Some(&v) => Some(v),
+            None => None,
+        }
     }
 }
 

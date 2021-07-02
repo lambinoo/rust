@@ -367,6 +367,15 @@ fn option_const() {
 
     const IS_NONE: bool = OPTION.is_none();
     assert!(!IS_NONE);
+
+    const TAKE: Option<usize> = OPTION.take();
+    assert_eq!(TAKE, OPTION);
+
+    const REPLACE: Option<usize> = OPTION.replace(42);
+    assert_eq!(REPLACE, OPTION);
+
+    const COPIED: Option<usize> = OPTION.as_ref().copied();
+    assert_eq!(COPIED, OPTION);
 }
 
 #[test]
