@@ -563,8 +563,9 @@ impl<T> Option<T> {
     /// assert_eq!(x.ok_or(0), Err(0));
     /// ```
     #[inline]
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn ok_or<E>(self, err: E) -> Result<T, E> {
+    pub const fn ok_or<E>(self, err: E) -> Result<T, E> {
         match self {
             Some(v) => Ok(v),
             None => Err(err),
@@ -665,8 +666,9 @@ impl<T> Option<T> {
     /// assert_eq!(x.and(y), None);
     /// ```
     #[inline]
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "rust1", since = "1.0.0")]
-    pub fn and<U>(self, optb: Option<U>) -> Option<U> {
+    pub const fn and<U>(self, optb: Option<U>) -> Option<U> {
         match self {
             Some(_) => optb,
             None => None,
@@ -813,8 +815,9 @@ impl<T> Option<T> {
     /// assert_eq!(x.xor(y), None);
     /// ```
     #[inline]
+    #[rustc_const_unstable(feature = "const_option", issue = "67441")]
     #[stable(feature = "option_xor", since = "1.37.0")]
-    pub fn xor(self, optb: Option<T>) -> Option<T> {
+    pub const fn xor(self, optb: Option<T>) -> Option<T> {
         match (self, optb) {
             (Some(a), None) => Some(a),
             (None, Some(b)) => Some(b),
