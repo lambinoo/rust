@@ -205,7 +205,7 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
                 struct_span_err!(
                     self.tcx.sess,
                     *span,
-                    e0549,
+                    E0549,
                     "rustc_deprecated attribute must be paired with \
                     either stable or unstable attribute"
                 )
