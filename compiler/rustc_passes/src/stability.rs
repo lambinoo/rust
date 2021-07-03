@@ -97,11 +97,12 @@ struct Annotator<'a, 'tcx> {
 impl<'a, 'tcx> Annotator<'a, 'tcx> {
     // Determine the stability for a node based on its attributes and inherited
     // stability. The stability is recorded in the index and used as the parent.
+    // fn_sig: Function signature linked with the current node
     fn annotate<F>(
         &mut self,
         hir_id: HirId,
         item_sp: Span,
-        item_kind: Option<&ItemKind<'_>>,
+        fn_sig: Option<&hir::FnSig<'_>>,
         kind: AnnotationKind,
         inherit_deprecation: InheritDeprecation,
         inherit_const_stability: InheritConstStability,
@@ -169,20 +170,28 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
 
         let const_stab = const_stab.map(|(const_stab, const_span)| {
             let const_stab = self.tcx.intern_const_stability(const_stab);
-            match item_kind {
-                Some(ItemKind::Fn(ref fn_sig, _, _)) => {
-                    if !(fn_sig.header.constness == Constness::Const
-                        && fn_sig.header.abi != Abi::RustIntrinsic
-                        && fn_sig.header.abi != Abi::PlatformIntrinsic)
-                    {
-                        self.tcx
-                            .sess
-                            .struct_span_err(fn_sig.span, "Attributes `#[rustc_const_unstable]` and `#[rustc_const_stable]` require the function to be marked `const`")
-                            .span_label(const_span, "Const stability attribute specified here")
-                            .emit();
-                    }
+            if let Some(fn_sig) = fn_sig {
+                if !(fn_sig.header.constness == hir::Constness::Const
+                    && fn_sig.header.abi != Abi::RustIntrinsic
+                    && fn_sig.header.abi != Abi::PlatformIntrinsic)
+                {
+                    self.tcx
+                        .sess
+                        .struct_span_err(
+                            fn_sig.span,
+                            "attributes `#[rustc_const_unstable]` \
+                            and `#[rustc_const_stable]` require \
+                            the function or method to be marked `const`",
+                        )
+                        .span_suggestion_short(
+                            fn_sig.span,
+                            "make the function or method const",
+                            String::new(),
+                            rustc_errors::Applicability::Unspecified,
+                        )
+                        .span_label(const_span, "attribute specified here")
+                        .emit();
                 }
-                _ => {}
             }
 
             self.index.const_stab_map.insert(hir_id, const_stab);
@@ -386,6 +395,8 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         let orig_in_trait_impl = self.in_trait_impl;
         let mut kind = AnnotationKind::Required;
         let mut const_stab_inherit = InheritConstStability::No;
+        let mut fn_sig = None;
+
         match i.kind {
             // Inherent impls and foreign modules serve only as containers for other items,
             // they don't have their own stability. They still can be annotated as unstable
@@ -406,7 +417,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
                     self.annotate(
                         ctor_hir_id,
                         i.span,
-                        Some(&i.kind),
+                        None,
                         AnnotationKind::Required,
                         InheritDeprecation::Yes,
                         InheritConstStability::No,
@@ -415,13 +426,16 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
                     )
                 }
             }
+            hir::ItemKind::Fn(ref item_fn_sig, _, _) => {
+                fn_sig = Some(item_fn_sig);
+            }
             _ => {}
         }
 
         self.annotate(
             i.hir_id(),
             i.span,
-            Some(&i.kind),
+            fn_sig,
             kind,
             InheritDeprecation::Yes,
             const_stab_inherit,
@@ -432,10 +446,15 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
     }
 
     fn visit_trait_item(&mut self, ti: &'tcx hir::TraitItem<'tcx>) {
+        let fn_sig = match ti.kind {
+            hir::TraitItemKind::Fn(ref fn_sig, _) => Some(fn_sig),
+            _ => None,
+        };
+
         self.annotate(
             ti.hir_id(),
             ti.span,
-            None,
+            fn_sig,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -449,10 +468,16 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
     fn visit_impl_item(&mut self, ii: &'tcx hir::ImplItem<'tcx>) {
         let kind =
             if self.in_trait_impl { AnnotationKind::Prohibited } else { AnnotationKind::Required };
+
+        let fn_sig = match ii.kind {
+            hir::ImplItemKind::Fn(ref fn_sig, _) => Some(fn_sig),
+            _ => None,
+        };
+
         self.annotate(
             ii.hir_id(),
             ii.span,
-            None,
+            fn_sig,
             kind,
             InheritDeprecation::Yes,
             InheritConstStability::No,
