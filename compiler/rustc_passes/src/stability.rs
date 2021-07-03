@@ -1,6 +1,7 @@
 //! A pass that annotates every item and method with its stability level,
 //! propagating default levels lexically from parent to children ast nodes.
 
+use hir::{Constness, ItemKind};
 use rustc_ast::Attribute;
 use rustc_attr::{self as attr, ConstStability, Stability};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
@@ -20,6 +21,7 @@ use rustc_session::parse::feature_err;
 use rustc_session::Session;
 use rustc_span::symbol::{sym, Symbol};
 use rustc_span::{Span, DUMMY_SP};
+use rustc_target::spec::abi::Abi;
 
 use std::cmp::Ordering;
 use std::iter;
@@ -99,6 +101,7 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
         &mut self,
         hir_id: HirId,
         item_sp: Span,
+        item_kind: Option<&ItemKind<'_>>,
         kind: AnnotationKind,
         inherit_deprecation: InheritDeprecation,
         inherit_const_stability: InheritConstStability,
@@ -164,8 +167,24 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
 
         let (stab, const_stab) = attr::find_stability(&self.tcx.sess, attrs, item_sp);
 
-        let const_stab = const_stab.map(|(const_stab, _)| {
+        let const_stab = const_stab.map(|(const_stab, const_span)| {
             let const_stab = self.tcx.intern_const_stability(const_stab);
+            match item_kind {
+                Some(ItemKind::Fn(ref fn_sig, _, _)) => {
+                    if !(fn_sig.header.constness == Constness::Const
+                        && fn_sig.header.abi != Abi::RustIntrinsic
+                        && fn_sig.header.abi != Abi::PlatformIntrinsic)
+                    {
+                        self.tcx
+                            .sess
+                            .struct_span_err(fn_sig.span, "Attributes `#[rustc_const_unstable]` and `#[rustc_const_stable]` require the function to be marked `const`")
+                            .span_label(const_span, "Const stability attribute specified here")
+                            .emit();
+                    }
+                }
+                _ => {}
+            }
+
             self.index.const_stab_map.insert(hir_id, const_stab);
             const_stab
         });
@@ -186,7 +205,7 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
                 struct_span_err!(
                     self.tcx.sess,
                     *span,
-                    E0549,
+                    e0549,
                     "rustc_deprecated attribute must be paired with \
                     either stable or unstable attribute"
                 )
@@ -387,6 +406,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
                     self.annotate(
                         ctor_hir_id,
                         i.span,
+                        Some(&i.kind),
                         AnnotationKind::Required,
                         InheritDeprecation::Yes,
                         InheritConstStability::No,
@@ -401,6 +421,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             i.hir_id(),
             i.span,
+            Some(&i.kind),
             kind,
             InheritDeprecation::Yes,
             const_stab_inherit,
@@ -414,6 +435,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             ti.hir_id(),
             ti.span,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -430,6 +452,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             ii.hir_id(),
             ii.span,
+            None,
             kind,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -444,6 +467,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             var.id,
             var.span,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -453,6 +477,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
                     v.annotate(
                         ctor_hir_id,
                         var.span,
+                        None,
                         AnnotationKind::Required,
                         InheritDeprecation::Yes,
                         InheritConstStability::No,
@@ -470,6 +495,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             s.hir_id,
             s.span,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -484,6 +510,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             i.hir_id(),
             i.span,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -498,6 +525,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             md.hir_id(),
             md.span,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -517,6 +545,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         self.annotate(
             p.hir_id,
             p.span,
+            None,
             kind,
             InheritDeprecation::No,
             InheritConstStability::No,
@@ -687,6 +716,7 @@ fn stability_index(tcx: TyCtxt<'tcx>, (): ()) -> Index<'tcx> {
         annotator.annotate(
             hir::CRATE_HIR_ID,
             krate.item.inner,
+            None,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
