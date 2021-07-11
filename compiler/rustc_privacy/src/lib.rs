@@ -731,6 +731,7 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // all of the items of a mod in `visit_mod` looking for use statements, we handle
             // making sure that intermediate use statements have their visibilities updated here.
             hir::ItemKind::Use(ref path, _) => {
+                tracing::debug!("item: {:#?}\nprev_level: {:#?}\npath: {:#?}", item, self.prev_level, path);
                 if item_level.is_some() {
                     self.update_visibility_of_intermediate_use_statements(path.segments.as_ref());
                 }
