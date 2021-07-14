@@ -11,7 +11,7 @@ use rustc_data_structures::fx::FxHashSet;
 use rustc_errors::struct_span_err;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX, LOCAL_CRATE};
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{self, DeepVisitor, NestedVisitorMap, Visitor};
 use rustc_hir::{AssocItemKind, HirIdSet, Node, PatKind};
 use rustc_middle::bug;
@@ -419,7 +419,7 @@ struct EmbargoVisitor<'tcx> {
     macro_reachable: FxHashSet<(hir::HirId, DefId)>,
     /// Previous accessibility level; `None` means unreachable.
     prev_level: Option<AccessLevel>,
-    /// Has something changed in the level map?
+    /// has something changed in the level map?
     changed: bool,
 }
 
@@ -573,56 +573,6 @@ impl EmbargoVisitor<'tcx> {
             | DefKind::Generator => (),
         }
     }
-
-    /// Given the path segments of a `ItemKind::Use`, then we need
-    /// to update the visibility of the intermediate use so that it isn't linted
-    /// by `unreachable_pub`.
-    ///
-    /// This isn't trivial as `path.res` has the `DefId` of the eventual target
-    /// of the use statement not of the next intermediate use statement.
-    ///
-    /// To do this, consider the last two segments of the path to our intermediate
-    /// use statement. We expect the penultimate segment to be a module and the
-    /// last segment to be the name of the item we are exporting. We can then
-    /// look at the items contained in the module for the use statement with that
-    /// name and update that item's visibility.
-    ///
-    /// FIXME: This solution won't work with glob imports and doesn't respect
-    /// namespaces. See <https://github.com/rust-lang/rust/pull/57922#discussion_r251234202>.
-    fn update_visibility_of_intermediate_use_statements(
-        &mut self,
-        segments: &[hir::PathSegment<'_>],
-    ) {
-        if let [.., module, segment] = segments {
-            if let Some(item) = module
-                .res
-                .and_then(|res| res.mod_def_id())
-                // If the module is `self`, i.e. the current crate,
-                // there will be no corresponding item.
-                .filter(|def_id| def_id.index != CRATE_DEF_INDEX || def_id.krate != LOCAL_CRATE)
-                .and_then(|def_id| {
-                    def_id.as_local().map(|def_id| self.tcx.hir().local_def_id_to_hir_id(def_id))
-                })
-                .map(|module_hir_id| self.tcx.hir().expect_item(module_hir_id))
-            {
-                if let hir::ItemKind::Mod(m) = &item.kind {
-                    for &item_id in m.item_ids {
-                        let item = self.tcx.hir().item(item_id);
-                        if !self.tcx.hygienic_eq(
-                            segment.ident,
-                            item.ident,
-                            item_id.def_id.to_def_id(),
-                        ) {
-                            continue;
-                        }
-                        if let hir::ItemKind::Use(..) = item.kind {
-                            self.update(item.hir_id(), Some(AccessLevel::Exported));
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
@@ -663,6 +613,14 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
                 }
             }
         };
+
+        tracing::trace!(
+            "item: {:#?}\ninherited_item_level: {:#?}\nprev_level: {:#?}\naccess_levels: {:#?}",
+            item,
+            inherited_item_level,
+            self.prev_level,
+            self.access_levels
+        );
 
         // Update level of the item itself.
         let item_level = self.update(item.hir_id(), inherited_item_level);
@@ -731,8 +689,13 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // all of the items of a mod in `visit_mod` looking for use statements, we handle
             // making sure that intermediate use statements have their visibilities updated here.
             hir::ItemKind::Use(ref path, _) => {
-                if item_level.is_some() {
-                    self.update_visibility_of_intermediate_use_statements(path.segments.as_ref());
+                tracing::trace!("path: {:?}", path);
+                if let Res::Def(_, def_id) = path.res {
+                    let hid = self.tcx.hir().local_def_id_to_hir_id(def_id.expect_local());
+                    tracing::trace!("def_id: {:?}, hid: {:?}", def_id, hid);
+                    if self.access_levels.is_exported(hid) {
+                        self.update(item.hir_id(), Some(AccessLevel::Exported));
+                    }
                 }
             }
             // The interface is empty.
