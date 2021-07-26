@@ -397,8 +397,6 @@ impl<'a, 'b> BuildReducedGraphVisitor<'a, 'b> {
             used: Cell::new(false),
         });
 
-        debug!("add_import({:?})", import);
-
         self.r.indeterminate_imports.push(import);
         match import.kind {
             // Don't add unresolved underscore imports to modules
@@ -469,7 +467,7 @@ impl<'a, 'b> BuildReducedGraphVisitor<'a, 'b> {
             prefix.is_empty() || prefix.len() == 1 && prefix[0].ident.name == kw::PathRoot
         };
         match use_tree.kind {
-            ast::UseTreeKind::Simple(rename, ..) => {
+            ast::UseTreeKind::Simple(rename, id1, id2) => {
                 let mut ident = use_tree.ident();
                 let mut module_path = prefix;
                 let mut source = module_path.pop().unwrap();
@@ -579,7 +577,9 @@ impl<'a, 'b> BuildReducedGraphVisitor<'a, 'b> {
                     },
                     type_ns_only,
                     nested,
+                    additional_ids: (id1, id2),
                 };
+
                 self.add_import(
                     module_path,
                     kind,

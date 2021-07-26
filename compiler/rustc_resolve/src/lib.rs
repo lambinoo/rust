@@ -46,9 +46,10 @@ use rustc_index::vec::IndexVec;
 use rustc_metadata::creader::{CStore, CrateLoader};
 use rustc_middle::hir::exports::ExportMap;
 use rustc_middle::middle::cstore::{CrateStore, MetadataLoaderDyn};
+use rustc_middle::middle::privacy::AccessLevel;
 use rustc_middle::span_bug;
 use rustc_middle::ty::query::Providers;
-use rustc_middle::ty::{self, DefIdTree, MainDefinition, ResolverOutputs};
+use rustc_middle::ty::{self, DefIdTree, MainDefinition, ResolverOutputs, Visibility};
 use rustc_session::lint;
 use rustc_session::lint::{BuiltinLintDiagnostics, LintBuffer};
 use rustc_session::Session;
@@ -1032,6 +1033,8 @@ pub struct Resolver<'a> {
     legacy_const_generic_args: FxHashMap<DefId, Option<Vec<usize>>>,
 
     main_def: Option<MainDefinition>,
+
+    nodes_access_level: FxHashMap<LocalDefId, AccessLevel>,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
@@ -1393,6 +1396,8 @@ impl<'a> Resolver<'a> {
             trait_impl_items: Default::default(),
             legacy_const_generic_args: Default::default(),
             main_def: Default::default(),
+
+            nodes_access_level: Default::default(),
         };
 
         let root_parent_scope = ParentScope::module(graph_root, &resolver);
@@ -1435,10 +1440,12 @@ impl<'a> Resolver<'a> {
         let maybe_unused_extern_crates = self.maybe_unused_extern_crates;
         let glob_map = self.glob_map;
         let main_def = self.main_def;
+        let access_levels = self.nodes_access_level;
         ResolverOutputs {
             definitions,
             cstore: Box::new(self.crate_loader.into_cstore()),
             visibilities,
+            access_levels,
             extern_crate_map,
             export_map,
             glob_map,
@@ -1456,6 +1463,7 @@ impl<'a> Resolver<'a> {
     pub fn clone_outputs(&self) -> ResolverOutputs {
         ResolverOutputs {
             definitions: self.definitions.clone(),
+            access_levels: self.nodes_access_level.clone(),
             cstore: Box::new(self.cstore().clone()),
             visibilities: self.visibilities.clone(),
             extern_crate_map: self.extern_crate_map.clone(),
@@ -1512,6 +1520,7 @@ impl<'a> Resolver<'a> {
     pub fn resolve_crate(&mut self, krate: &Crate) {
         self.session.time("resolve_crate", || {
             self.session.time("finalize_imports", || ImportResolver { r: self }.finalize_imports());
+            self.session.time("resolve_export_privacy", || self.resolve_export_privacy());
             self.session.time("finalize_macro_resolutions", || self.finalize_macro_resolutions());
             self.session.time("late_resolve_crate", || self.late_resolve_crate(krate));
             self.session.time("resolve_main", || self.resolve_main());
@@ -1519,6 +1528,58 @@ impl<'a> Resolver<'a> {
             self.session.time("resolve_report_errors", || self.report_errors(krate));
             self.session.time("resolve_postprocess", || self.crate_loader.postprocess(krate));
         });
+    }
+
+    /// Compute access levels for exports and intermediate use statements
+    fn resolve_export_privacy(&mut self) {
+        let root = self.graph_root();
+        let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
+
+        if let Some(exports) = exports.cloned() {
+            let public_exports =
+                exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
+
+            for export in public_exports {
+                if let Some(ns) = export.res.ns() {
+                    let key = self.new_key(export.ident, ns);
+                    let name_res = self.resolution(root, key);
+                    if let Some(binding) = name_res.borrow().binding() {
+                        self.compute_binding_access_level(binding);
+                    }
+                }
+            }
+        }
+
+        tracing::debug!("nodes_access_level: {:?}", self.nodes_access_level);
+    }
+
+    /// Set the given binding access level to `AccessLevel::Public` and
+    /// sets the rest of the `use` chain to `AccessLevel::Exported` until
+    /// we hit the actual exported item
+    fn compute_binding_access_level(&mut self, mut binding: &NameBinding<'a>) {
+        let mut access_level = AccessLevel::Public;
+        while let NameBindingKind::Import { binding: nested_binding, import, .. } = binding.kind {
+            self.mark_node_with_access_level(import.id, access_level);
+
+            match import.kind {
+                ImportKind::Single { additional_ids, .. } => {
+                    self.mark_node_with_access_level(additional_ids.0, access_level);
+                    self.mark_node_with_access_level(additional_ids.1, access_level);
+                }
+                _ => {}
+            };
+
+            access_level = AccessLevel::Exported;
+            binding = nested_binding;
+        }
+    }
+
+    fn mark_node_with_access_level(&mut self, node_id: NodeId, access_level: AccessLevel) -> bool {
+        if let Some(def_id) = self.opt_local_def_id(node_id) {
+            self.nodes_access_level.insert(def_id, access_level).is_none()
+        } else {
+            false
+        }
     }
 
     pub fn traits_in_scope(
