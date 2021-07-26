@@ -680,7 +680,7 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // Re-exports are handled in `visit_mod`. However, in order to avoid looping over
             // all of the items of a mod in `visit_mod` looking for use statements, we handle
             // making sure that intermediate use statements have their visibilities updated here.
-            hir::ItemKind::Use(ref path, ..) => {
+            hir::ItemKind::Use(..) => {
                 if item.vis.node.is_pub() {
                     let access_level = self.tcx.get_resolver_access_level(item.def_id);
                     self.update(item.hir_id(), access_level);
