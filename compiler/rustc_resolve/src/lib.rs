@@ -1034,7 +1034,7 @@ pub struct Resolver<'a> {
 
     main_def: Option<MainDefinition>,
 
-    node_privacy: FxHashMap<DefId, AccessLevel>
+    node_privacy: FxHashMap<HirId, AccessLevel>,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
@@ -1535,16 +1535,16 @@ impl<'a> Resolver<'a> {
 
         if let Some(def_id) = root.def_id() {
             if let Some(exports) = self.export_map.get(&def_id.expect_local()).cloned() {
-                tracing::trace!("exports={:?}", exports);
-                let public_exports = exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
+                let public_exports =
+                    exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
                 for export in public_exports.into_iter() {
-                    self.per_ns(|this, ns| {
-                        let new_key = this.new_key(export.ident, ns);
-                        let name_res = this.resolution(root, new_key);
+                    if let Some(ns) = export.res.ns() {
+                        let key = self.new_key(export.ident, ns);
+                        let name_res = self.resolution(root, key);
                         if let Some(binding) = name_res.borrow().binding() {
-                            this.recursive_define_access_level(binding, AccessLevel::Public, 30);
+                            self.recursive_define_access_level(binding, AccessLevel::Public, 30);
                         }
-                    });
+                    }
                 }
             }
         }
@@ -1552,20 +1552,44 @@ impl<'a> Resolver<'a> {
         tracing::info!("node_privacy: {:#?}", self.node_privacy);
     }
 
-    fn recursive_define_access_level(&mut self, binding: &NameBinding<'a>, access_level: AccessLevel, max_recurse: usize) {
+    fn recursive_define_access_level(
+        &mut self,
+        binding: &NameBinding<'a>,
+        access_level: AccessLevel,
+        max_recurse: usize,
+    ) {
         // Is this useful in case of very very veryyyyyy deep nesting?
         if max_recurse == 0 {
             return;
         }
 
         if let NameBindingKind::Import { binding, import, .. } = binding.kind {
-            let def_id = self.opt_local_def_id(import.id).map(|local_def_id| local_def_id.to_def_id());
-            if let Some(def_id) = def_id {
-                tracing::trace!("binding found! import.id={:?} def_id={:?}", import.id, def_id);
-                self.node_privacy.insert(def_id, access_level);
-            }
+            tracing::trace!(
+                "binding found! import.id={:?}, import.root_id={:?}, res={:?}",
+                import.id,
+                import.root_id,
+                binding.res()
+            );
+            self.mark_node_with_access_level(import.id, access_level);
+            match import.kind {
+                ImportKind::Single { additional_ids, .. } => {
+                    self.mark_node_with_access_level(additional_ids.0, access_level);
+                    self.mark_node_with_access_level(additional_ids.1, access_level);
+                }
+                _ => {}
+            };
 
             self.recursive_define_access_level(binding, AccessLevel::Exported, max_recurse - 1);
+        }
+    }
+
+    fn mark_node_with_access_level(&mut self, node_id: NodeId, access_level: AccessLevel) -> bool {
+        if let Some(local_def_id) = self.opt_local_def_id(node_id) {
+            if let Some(hir_id) = self.definitions().def_id_to_hir_id.get(local_def_id.to_def_id()) {
+                self.node_privacy.insert(hir_id, access_level).is_none();
+            }
+        } else {
+            false
         }
     }
 

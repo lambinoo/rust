@@ -681,9 +681,13 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // all of the items of a mod in `visit_mod` looking for use statements, we handle
             // making sure that intermediate use statements have their visibilities updated here.
             hir::ItemKind::Use(ref path, ..) => {
-                tracing::trace!("item: def_id={:?}, last_segment: {:?}", item.def_id.to_def_id(), path.segments.last());
+                tracing::trace!(
+                    "item: def_id={:?}, last_segment: {:?}",
+                    item.def_id.to_def_id(),
+                    path.segments.last()
+                );
                 if item.vis.node.is_pub() {
-                    let access_level = self.tcx.get_resolver_access_level(item.def_id.to_def_id());
+                    let access_level = self.tcx.get_resolver_access_level(item.hir_id());
                     self.update(item.hir_id(), access_level);
                 }
             }

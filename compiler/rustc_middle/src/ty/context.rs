@@ -1161,8 +1161,8 @@ impl<'tcx> TyCtxt<'tcx> {
         )
     }
 
-    pub fn get_resolver_access_level(self, def_id: DefId) -> Option<AccessLevel> {
-        self.gcx.untracked_resolutions.access_levels.get(&def_id).copied()
+    pub fn get_resolver_access_level(self, hir_id: HirId) -> Option<AccessLevel> {
+        self.gcx.untracked_resolutions.access_levels.get(&hir_id).copied()
     }
 
     pub fn lift<T: Lift<'tcx>>(self, value: T) -> Option<T::Lifted> {

@@ -50,6 +50,7 @@ pub enum ImportKind<'a> {
         type_ns_only: bool,
         /// Did this import result from a nested import? ie. `use foo::{bar, baz};`
         nested: bool,
+        additional_ids: (NodeId, NodeId),
     },
     Glob {
         is_prelude: bool,
@@ -838,7 +839,10 @@ impl<'a, 'b> ImportResolver<'a, 'b> {
                         import.span,
                     );
                     import.vis.set(orig_vis);
-                    tracing::trace!("resolve_import: determinacy: {:?}", binding.map(|binding| binding.span));
+                    tracing::trace!(
+                        "resolve_import: determinacy: {:?}",
+                        binding.map(|binding| binding.span)
+                    );
                     source_bindings[ns].set(binding);
                 } else {
                     return;
