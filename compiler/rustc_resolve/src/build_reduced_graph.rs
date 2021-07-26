@@ -397,7 +397,7 @@ impl<'a, 'b> BuildReducedGraphVisitor<'a, 'b> {
             used: Cell::new(false),
         });
 
-        debug!("add_import({:?})", import);
+        debug!("add_import({:#?})", import);
 
         self.r.indeterminate_imports.push(import);
         match import.kind {
