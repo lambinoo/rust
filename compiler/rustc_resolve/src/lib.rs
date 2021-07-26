@@ -1034,7 +1034,7 @@ pub struct Resolver<'a> {
 
     main_def: Option<MainDefinition>,
 
-    node_privacy: FxHashMap<HirId, AccessLevel>,
+    nodes_access_level: FxHashMap<LocalDefId, AccessLevel>,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
@@ -1397,7 +1397,7 @@ impl<'a> Resolver<'a> {
             legacy_const_generic_args: Default::default(),
             main_def: Default::default(),
 
-            node_privacy: Default::default(),
+            nodes_access_level: Default::default(),
         };
 
         let root_parent_scope = ParentScope::module(graph_root, &resolver);
@@ -1440,7 +1440,7 @@ impl<'a> Resolver<'a> {
         let maybe_unused_extern_crates = self.maybe_unused_extern_crates;
         let glob_map = self.glob_map;
         let main_def = self.main_def;
-        let access_levels = self.node_privacy;
+        let access_levels = self.nodes_access_level;
         ResolverOutputs {
             definitions,
             cstore: Box::new(self.crate_loader.into_cstore()),
@@ -1463,7 +1463,7 @@ impl<'a> Resolver<'a> {
     pub fn clone_outputs(&self) -> ResolverOutputs {
         ResolverOutputs {
             definitions: self.definitions.clone(),
-            access_levels: self.node_privacy.clone(),
+            access_levels: self.nodes_access_level.clone(),
             cstore: Box::new(self.cstore().clone()),
             visibilities: self.visibilities.clone(),
             extern_crate_map: self.extern_crate_map.clone(),
@@ -1549,7 +1549,7 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        tracing::info!("node_privacy: {:#?}", self.node_privacy);
+        tracing::info!("nodes_access_level: {:#?}", self.nodes_access_level);
     }
 
     fn recursive_define_access_level(
@@ -1584,10 +1584,8 @@ impl<'a> Resolver<'a> {
     }
 
     fn mark_node_with_access_level(&mut self, node_id: NodeId, access_level: AccessLevel) -> bool {
-        if let Some(local_def_id) = self.opt_local_def_id(node_id) {
-            if let Some(hir_id) = self.definitions().def_id_to_hir_id.get(local_def_id.to_def_id()) {
-                self.node_privacy.insert(hir_id, access_level).is_none();
-            }
+        if let Some(def_id) = self.opt_local_def_id(node_id) {
+            self.nodes_access_level.insert(def_id, access_level).is_none()
         } else {
             false
         }

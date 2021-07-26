@@ -686,8 +686,9 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
                     item.def_id.to_def_id(),
                     path.segments.last()
                 );
+
                 if item.vis.node.is_pub() {
-                    let access_level = self.tcx.get_resolver_access_level(item.hir_id());
+                    let access_level = self.tcx.get_resolver_access_level(item.def_id);
                     self.update(item.hir_id(), access_level);
                 }
             }
