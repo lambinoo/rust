@@ -266,8 +266,6 @@ impl<'a> Resolver<'a> {
         let resolution =
             self.resolution(module, key).try_borrow_mut().map_err(|_| (Determined, Weak::No))?; // This happens when there is a cycle of imports.
 
-        tracing::info!("resolve_ident: module={:?}, ident={:?}", module, ident);
-
         if let Some(binding) = resolution.binding {
             if !restricted_shadowing && binding.expansion != LocalExpnId::ROOT {
                 if let NameBindingKind::Res(_, true) = binding.kind {
@@ -839,10 +837,6 @@ impl<'a, 'b> ImportResolver<'a, 'b> {
                         import.span,
                     );
                     import.vis.set(orig_vis);
-                    tracing::trace!(
-                        "resolve_import: determinacy: {:?}",
-                        binding.map(|binding| binding.span)
-                    );
                     source_bindings[ns].set(binding);
                 } else {
                     return;

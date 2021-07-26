@@ -397,8 +397,6 @@ impl<'a, 'b> BuildReducedGraphVisitor<'a, 'b> {
             used: Cell::new(false),
         });
 
-        debug!("add_import({:#?})", import);
-
         self.r.indeterminate_imports.push(import);
         match import.kind {
             // Don't add unresolved underscore imports to modules

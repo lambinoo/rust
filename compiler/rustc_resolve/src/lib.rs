@@ -1549,7 +1549,7 @@ impl<'a> Resolver<'a> {
             }
         }
 
-        tracing::info!("nodes_access_level: {:#?}", self.nodes_access_level);
+        tracing::debug!("nodes_access_level: {:?}", self.nodes_access_level);
     }
 
     fn recursive_define_access_level(
