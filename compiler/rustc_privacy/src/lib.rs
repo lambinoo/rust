@@ -591,9 +591,8 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
                 Option::<AccessLevel>::of_impl(item.hir_id(), self.tcx, &self.access_levels)
             }
             // Foreign modules inherit level from parents.
-            hir::ItemKind::ForeignMod { .. } => self.prev_level,
-            // Other `pub` items inherit levels from parents.
-            hir::ItemKind::Const(..)
+            hir::ItemKind::ForeignMod { .. }
+            | hir::ItemKind::Const(..)
             | hir::ItemKind::Enum(..)
             | hir::ItemKind::ExternCrate(..)
             | hir::ItemKind::GlobalAsm(..)

@@ -74,6 +74,7 @@ use macros::{MacroRulesBinding, MacroRulesScope, MacroRulesScopeRef};
 
 type Res = def::Res<NodeId>;
 
+mod access_levels;
 mod build_reduced_graph;
 mod check_unused;
 mod def_collector;
@@ -1520,7 +1521,7 @@ impl<'a> Resolver<'a> {
     pub fn resolve_crate(&mut self, krate: &Crate) {
         self.session.time("resolve_crate", || {
             self.session.time("finalize_imports", || ImportResolver { r: self }.finalize_imports());
-            self.session.time("resolve_export_privacy", || self.resolve_export_privacy());
+            self.session.time("resolve_access_level", || self.resolve_access_level(krate));
             self.session.time("finalize_macro_resolutions", || self.finalize_macro_resolutions());
             self.session.time("late_resolve_crate", || self.late_resolve_crate(krate));
             self.session.time("resolve_main", || self.resolve_main());
@@ -1531,7 +1532,11 @@ impl<'a> Resolver<'a> {
     }
 
     /// Compute access levels for exports and intermediate use statements
-    fn resolve_export_privacy(&mut self) {
+    fn resolve_access_level(&mut self, krate: &Crate) {
+        let mut privacy_levels =
+            access_levels::PrivacyVisitor::new(self, Some(AccessLevel::Public));
+        visit::walk_crate(&mut privacy_levels, krate);
+
         let root = self.graph_root();
         let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
 
@@ -1544,7 +1549,7 @@ impl<'a> Resolver<'a> {
                     let key = self.new_key(export.ident, ns);
                     let name_res = self.resolution(root, key);
                     if let Some(binding) = name_res.borrow().binding() {
-                        self.compute_binding_access_level(binding);
+                        self.set_binding_to_public(binding);
                     }
                 }
             }
@@ -1556,30 +1561,35 @@ impl<'a> Resolver<'a> {
     /// Set the given binding access level to `AccessLevel::Public` and
     /// sets the rest of the `use` chain to `AccessLevel::Exported` until
     /// we hit the actual exported item
-    fn compute_binding_access_level(&mut self, mut binding: &NameBinding<'a>) {
-        let mut access_level = AccessLevel::Public;
+    fn set_binding_to_public(&mut self, mut binding: &NameBinding<'a>) {
+        let mut access_level = Some(AccessLevel::Public);
         while let NameBindingKind::Import { binding: nested_binding, import, .. } = binding.kind {
-            self.mark_node_with_access_level(import.id, access_level);
+            self.set_access_level(import.id, access_level);
 
             match import.kind {
                 ImportKind::Single { additional_ids, .. } => {
-                    self.mark_node_with_access_level(additional_ids.0, access_level);
-                    self.mark_node_with_access_level(additional_ids.1, access_level);
+                    self.set_access_level(additional_ids.0, access_level);
+                    self.set_access_level(additional_ids.1, access_level);
                 }
                 _ => {}
             };
 
-            access_level = AccessLevel::Exported;
+            access_level = Some(AccessLevel::Exported);
             binding = nested_binding;
         }
     }
 
-    fn mark_node_with_access_level(&mut self, node_id: NodeId, access_level: AccessLevel) -> bool {
-        if let Some(def_id) = self.opt_local_def_id(node_id) {
-            self.nodes_access_level.insert(def_id, access_level).is_none()
-        } else {
-            false
+    fn set_access_level(
+        &mut self,
+        node_id: NodeId,
+        access_level: Option<AccessLevel>,
+    ) -> Option<AccessLevel> {
+        if let Some(access_level) = access_level {
+            let def_id = self.local_def_id(node_id);
+            self.nodes_access_level.insert(def_id, access_level);
         }
+
+        access_level
     }
 
     pub fn traits_in_scope(
