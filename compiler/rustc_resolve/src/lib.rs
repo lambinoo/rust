@@ -1520,7 +1520,7 @@ impl<'a> Resolver<'a> {
     pub fn resolve_crate(&mut self, krate: &Crate) {
         self.session.time("resolve_crate", || {
             self.session.time("finalize_imports", || ImportResolver { r: self }.finalize_imports());
-            self.session.time("resolve_exported_accesss_level", || self.resolve_exported_accesss_level());
+            self.session.time("resolve_export_privacy", || self.resolve_export_privacy());
             self.session.time("finalize_macro_resolutions", || self.finalize_macro_resolutions());
             self.session.time("late_resolve_crate", || self.late_resolve_crate(krate));
             self.session.time("resolve_main", || self.resolve_main());
@@ -1531,14 +1531,13 @@ impl<'a> Resolver<'a> {
     }
 
     /// Compute access levels for exports and intermediate use statements
-    fn resolve_exported_accesss_level(&mut self) {
+    fn resolve_export_privacy(&mut self) {
         let root = self.graph_root();
         let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
 
         if let Some(exports) = exports.cloned() {
-            let public_exports = exports.iter()
-                .filter(|ex| ex.vis == Visibility::Public)
-                .collect::<Vec<_>>();
+            let public_exports =
+                exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
 
             for export in public_exports {
                 if let Some(ns) = export.res.ns() {
@@ -1554,13 +1553,10 @@ impl<'a> Resolver<'a> {
         tracing::debug!("nodes_access_level: {:?}", self.nodes_access_level);
     }
 
-    /// Set the given binding access level to `AccessLevel::Public` and 
+    /// Set the given binding access level to `AccessLevel::Public` and
     /// sets the rest of the `use` chain to `AccessLevel::Exported` until
     /// we hit the actual exported item
-    fn compute_binding_access_level(
-        &mut self,
-        mut binding: &NameBinding<'a>
-    ) {
+    fn compute_binding_access_level(&mut self, mut binding: &NameBinding<'a>) {
         let mut access_level = AccessLevel::Public;
         while let NameBindingKind::Import { binding: nested_binding, import, .. } = binding.kind {
             self.mark_node_with_access_level(import.id, access_level);
