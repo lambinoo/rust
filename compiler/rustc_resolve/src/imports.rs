@@ -50,6 +50,8 @@ pub enum ImportKind<'a> {
         type_ns_only: bool,
         /// Did this import result from a nested import? ie. `use foo::{bar, baz};`
         nested: bool,
+        /// Additional `NodeId`s allocated to a `ast::UseTree` for automatically generated `use` statement
+        /// (eg. implicit struct constructors)
         additional_ids: (NodeId, NodeId),
     },
     Glob {

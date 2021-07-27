@@ -1520,7 +1520,7 @@ impl<'a> Resolver<'a> {
     pub fn resolve_crate(&mut self, krate: &Crate) {
         self.session.time("resolve_crate", || {
             self.session.time("finalize_imports", || ImportResolver { r: self }.finalize_imports());
-            self.session.time("prepare_privacy", || self.prepare_privacy());
+            self.session.time("resolve_exported_accesss_level", || self.resolve_exported_accesss_level());
             self.session.time("finalize_macro_resolutions", || self.finalize_macro_resolutions());
             self.session.time("late_resolve_crate", || self.late_resolve_crate(krate));
             self.session.time("resolve_main", || self.resolve_main());
@@ -1530,20 +1530,22 @@ impl<'a> Resolver<'a> {
         });
     }
 
-    fn prepare_privacy(&mut self) {
+    /// Compute access levels for exports and intermediate use statements
+    fn resolve_exported_accesss_level(&mut self) {
         let root = self.graph_root();
+        let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
 
-        if let Some(def_id) = root.def_id() {
-            if let Some(exports) = self.export_map.get(&def_id.expect_local()).cloned() {
-                let public_exports =
-                    exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
-                for export in public_exports.into_iter() {
-                    if let Some(ns) = export.res.ns() {
-                        let key = self.new_key(export.ident, ns);
-                        let name_res = self.resolution(root, key);
-                        if let Some(binding) = name_res.borrow().binding() {
-                            self.recursive_define_access_level(binding, AccessLevel::Public, 30);
-                        }
+        if let Some(exports) = exports.cloned() {
+            let public_exports = exports.iter()
+                .filter(|ex| ex.vis == Visibility::Public)
+                .collect::<Vec<_>>();
+
+            for export in public_exports {
+                if let Some(ns) = export.res.ns() {
+                    let key = self.new_key(export.ident, ns);
+                    let name_res = self.resolution(root, key);
+                    if let Some(binding) = name_res.borrow().binding() {
+                        self.compute_binding_access_level(binding);
                     }
                 }
             }
@@ -1552,25 +1554,17 @@ impl<'a> Resolver<'a> {
         tracing::debug!("nodes_access_level: {:?}", self.nodes_access_level);
     }
 
-    fn recursive_define_access_level(
+    /// Set the given binding access level to `AccessLevel::Public` and 
+    /// sets the rest of the `use` chain to `AccessLevel::Exported` until
+    /// we hit the actual exported item
+    fn compute_binding_access_level(
         &mut self,
-        binding: &NameBinding<'a>,
-        access_level: AccessLevel,
-        max_recurse: usize,
+        mut binding: &NameBinding<'a>
     ) {
-        // Is this useful in case of very very veryyyyyy deep nesting?
-        if max_recurse == 0 {
-            return;
-        }
-
-        if let NameBindingKind::Import { binding, import, .. } = binding.kind {
-            tracing::trace!(
-                "binding found! import.id={:?}, import.root_id={:?}, res={:?}",
-                import.id,
-                import.root_id,
-                binding.res()
-            );
+        let mut access_level = AccessLevel::Public;
+        while let NameBindingKind::Import { binding: nested_binding, import, .. } = binding.kind {
             self.mark_node_with_access_level(import.id, access_level);
+
             match import.kind {
                 ImportKind::Single { additional_ids, .. } => {
                     self.mark_node_with_access_level(additional_ids.0, access_level);
@@ -1579,7 +1573,8 @@ impl<'a> Resolver<'a> {
                 _ => {}
             };
 
-            self.recursive_define_access_level(binding, AccessLevel::Exported, max_recurse - 1);
+            access_level = AccessLevel::Exported;
+            binding = nested_binding;
         }
     }
 
