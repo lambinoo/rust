@@ -46,7 +46,7 @@ use rustc_index::vec::IndexVec;
 use rustc_metadata::creader::{CStore, CrateLoader};
 use rustc_middle::hir::exports::ExportMap;
 use rustc_middle::middle::cstore::{CrateStore, MetadataLoaderDyn};
-use rustc_middle::middle::privacy::AccessLevel;
+use rustc_middle::middle::privacy::{AccessLevel, AccessLevels};
 use rustc_middle::span_bug;
 use rustc_middle::ty::query::Providers;
 use rustc_middle::ty::{self, DefIdTree, MainDefinition, ResolverOutputs, Visibility};
@@ -1035,7 +1035,7 @@ pub struct Resolver<'a> {
 
     main_def: Option<MainDefinition>,
 
-    nodes_access_level: FxHashMap<LocalDefId, AccessLevel>,
+    nodes_access_level: AccessLevels,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
@@ -1533,10 +1533,18 @@ impl<'a> Resolver<'a> {
 
     /// Compute access levels for exports and intermediate use statements
     fn resolve_access_level(&mut self, krate: &Crate) {
-        let mut privacy_levels =
-            access_levels::PrivacyVisitor::new(self, Some(AccessLevel::Public));
-        visit::walk_crate(&mut privacy_levels, krate);
+        self.set_access_level(CRATE_NODE_ID, Some(AccessLevel::Public));
 
+        let mut privacy_visitor =
+            access_levels::PrivacyVisitor::new(self, Some(AccessLevel::Public));
+        visit::walk_crate(&mut privacy_visitor, krate);
+
+        self.set_exports_access_level();
+
+        tracing::info!("nodes_access_level: {:#?}", self.nodes_access_level);
+    }
+
+    fn set_exports_access_level(&mut self) {
         let root = self.graph_root();
         let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
 
@@ -1545,6 +1553,10 @@ impl<'a> Resolver<'a> {
                 exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
 
             for export in public_exports {
+                if let Some(export_def_id) = export.res.def_id().as_local() {
+                    self.set_access_level_def_id(export_def_id, Some(AccessLevel::Public));
+                }
+
                 if let Some(ns) = export.res.ns() {
                     let key = self.new_key(export.ident, ns);
                     let name_res = self.resolution(root, key);
@@ -1554,8 +1566,6 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
-
-        tracing::debug!("nodes_access_level: {:?}", self.nodes_access_level);
     }
 
     /// Set the given binding access level to `AccessLevel::Public` and
@@ -1584,12 +1594,21 @@ impl<'a> Resolver<'a> {
         node_id: NodeId,
         access_level: Option<AccessLevel>,
     ) -> Option<AccessLevel> {
-        if let Some(access_level) = access_level {
-            let def_id = self.local_def_id(node_id);
-            self.nodes_access_level.insert(def_id, access_level);
-        }
+        self.set_access_level_def_id(self.local_def_id(node_id), access_level)
+    }
 
-        access_level
+    fn set_access_level_def_id(
+        &mut self,
+        def_id: LocalDefId,
+        access_level: Option<AccessLevel>,
+    ) -> Option<AccessLevel> {
+        let old_level = self.nodes_access_level.map.get(&def_id).copied();
+        if old_level < access_level {
+            self.nodes_access_level.map.insert(def_id, access_level.unwrap());
+            access_level
+        } else {
+            old_level
+        }
     }
 
     pub fn traits_in_scope(

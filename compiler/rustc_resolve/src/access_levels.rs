@@ -3,6 +3,7 @@ use rustc_ast::visit;
 use rustc_ast::visit::Visitor;
 use rustc_ast::EnumDef;
 use rustc_ast::ForeignMod;
+use rustc_ast_lowering::ResolverAstLowering;
 use rustc_middle::middle::privacy::AccessLevel;
 
 use crate::Resolver;
@@ -18,13 +19,15 @@ impl<'r, 'a> PrivacyVisitor<'r, 'a> {
     }
 }
 
-impl<'r, 'a> Visitor<'a> for PrivacyVisitor<'a, 'r> {
-    fn visit_item(&mut self, item: &'a ast::Item) {
+impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
+    fn visit_item(&mut self, item: &'ast ast::Item) {
         let inherited_item_level = match item.kind {
             // TODO Is this the correct behavior for those macros?
             ast::ItemKind::MacCall(..) | ast::ItemKind::MacroDef(..) => None,
 
+            // Resolved in privacy when hir is available
             ast::ItemKind::Impl(..) => None,
+
             ast::ItemKind::ForeignMod(..) => self.prev_level,
 
             ast::ItemKind::ExternCrate(..)
@@ -51,18 +54,6 @@ impl<'r, 'a> Visitor<'a> for PrivacyVisitor<'a, 'r> {
         let access_level = self.r.set_access_level(item.id, inherited_item_level);
 
         match item.kind {
-            ast::ItemKind::ExternCrate(..)
-            | ast::ItemKind::Use(..)
-            | ast::ItemKind::Static(..)
-            | ast::ItemKind::Const(..)
-            | ast::ItemKind::GlobalAsm(..)
-            | ast::ItemKind::TyAlias(..)
-            | ast::ItemKind::Mod(..)
-            | ast::ItemKind::TraitAlias(..)
-            | ast::ItemKind::MacroDef(..)
-            | ast::ItemKind::MacCall(..)
-            | ast::ItemKind::Fn(..) => {}
-
             ast::ItemKind::ForeignMod(ForeignMod { ref items, .. }) => {
                 for nested in items {
                     if nested.vis.kind.is_pub() {
@@ -99,11 +90,27 @@ impl<'r, 'a> Visitor<'a> for PrivacyVisitor<'a, 'r> {
             }
             ast::ItemKind::Impl(ref impl_kind) => {
                 for nested in impl_kind.items.iter() {
+                    tracing::info!(
+                        "ast::ItemKind::Impl: nested={:?}",
+                        self.r.opt_local_def_id(nested.id)
+                    );
                     if impl_kind.of_trait.is_some() || nested.vis.kind.is_pub() {
                         self.r.set_access_level(nested.id, access_level);
                     }
                 }
             }
+
+            ast::ItemKind::ExternCrate(..)
+            | ast::ItemKind::Use(..)
+            | ast::ItemKind::Static(..)
+            | ast::ItemKind::Const(..)
+            | ast::ItemKind::GlobalAsm(..)
+            | ast::ItemKind::TyAlias(..)
+            | ast::ItemKind::Mod(..)
+            | ast::ItemKind::TraitAlias(..)
+            | ast::ItemKind::MacroDef(..)
+            | ast::ItemKind::MacCall(..)
+            | ast::ItemKind::Fn(..) => {}
         }
 
         let orig_level = std::mem::replace(&mut self.prev_level, access_level);
@@ -111,5 +118,9 @@ impl<'r, 'a> Visitor<'a> for PrivacyVisitor<'a, 'r> {
         self.prev_level = orig_level;
     }
 
-    fn visit_block(&mut self, _block: &'a ast::Block) {}
+    fn visit_block(&mut self, block: &'ast ast::Block) {
+        let orig_level = std::mem::take(&mut self.prev_level);
+        visit::walk_block(self, block);
+        self.prev_level = orig_level;
+    }
 }

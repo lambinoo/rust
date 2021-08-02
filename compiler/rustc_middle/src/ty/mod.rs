@@ -23,7 +23,7 @@ pub use vtable::*;
 use crate::hir::exports::ExportMap;
 use crate::ich::StableHashingContext;
 use crate::middle::cstore::CrateStoreDyn;
-use crate::middle::privacy::AccessLevel;
+use crate::middle::privacy::AccessLevels;
 use crate::mir::{Body, GeneratorLayout};
 use crate::traits::{self, Reveal};
 use crate::ty;
@@ -119,7 +119,7 @@ pub struct ResolverOutputs {
     pub definitions: rustc_hir::definitions::Definitions,
     pub cstore: Box<CrateStoreDyn>,
     pub visibilities: FxHashMap<LocalDefId, Visibility>,
-    pub access_levels: FxHashMap<LocalDefId, AccessLevel>,
+    pub access_levels: AccessLevels,
     pub extern_crate_map: FxHashMap<LocalDefId, CrateNum>,
     pub maybe_unused_trait_imports: FxHashSet<LocalDefId>,
     pub maybe_unused_extern_crates: Vec<(LocalDefId, Span)>,

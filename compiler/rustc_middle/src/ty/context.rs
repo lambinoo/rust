@@ -8,7 +8,7 @@ use crate::infer::canonical::{Canonical, CanonicalVarInfo, CanonicalVarInfos};
 use crate::lint::{struct_lint_level, LintDiagnosticBuilder, LintLevelSource};
 use crate::middle;
 use crate::middle::cstore::EncodedMetadata;
-use crate::middle::privacy::AccessLevel;
+use crate::middle::privacy::AccessLevels;
 use crate::middle::resolve_lifetime::{self, LifetimeScopeForPath, ObjectLifetimeDefault};
 use crate::middle::stability;
 use crate::mir::interpret::{self, AllocId, Allocation, ConstValue, Scalar};
@@ -1161,8 +1161,8 @@ impl<'tcx> TyCtxt<'tcx> {
         )
     }
 
-    pub fn get_resolver_access_level(self, local_def_id: LocalDefId) -> Option<AccessLevel> {
-        self.gcx.untracked_resolutions.access_levels.get(&local_def_id).copied()
+    pub fn get_resolver_access_levels(self) -> AccessLevels {
+        self.gcx.untracked_resolutions.access_levels.clone()
     }
 
     pub fn lift<T: Lift<'tcx>>(self, value: T) -> Option<T::Lifted> {
