@@ -65,7 +65,7 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
                 for variant in variants {
                     let variant_level = self.r.set_access_level(variant.id, access_level);
                     if let Some(ctor_id) = variant.data.ctor_id() {
-                         self.r.set_access_level(ctor_id, access_level);
+                        self.r.set_access_level(ctor_id, access_level);
                     }
 
                     for field in variant.data.fields() {

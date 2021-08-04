@@ -1594,7 +1594,7 @@ impl<'a> Resolver<'a> {
             self.set_access_level(import.id, access_level);
 
             match import.kind {
-                ImportKind::Single { additional_ids, source, target, .. } => {
+                ImportKind::Single { additional_ids, .. } => {
                     self.set_access_level(additional_ids.0, access_level);
                     self.set_access_level(additional_ids.1, access_level);
                 }
