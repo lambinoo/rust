@@ -97,7 +97,9 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
                 }
             }
             ast::ItemKind::Mod(..) => {
-                self.r.set_exports_access_level(self.r.local_def_id(item.id));
+                if access_level.is_some() {
+                    self.r.set_exports_access_level(self.r.local_def_id(item.id));
+                }
             }
             ast::ItemKind::ExternCrate(..)
             | ast::ItemKind::Use(..)
