@@ -1571,7 +1571,7 @@ impl<'a> Resolver<'a> {
 
             for export in pub_exports.into_iter() {
                 if let Some(export_def_id) = export.res.opt_def_id().and_then(|id| id.as_local()) {
-                    self.set_access_level_def_id(export_def_id, Some(AccessLevel::Public));
+                    self.set_access_level_def_id(export_def_id, Some(AccessLevel::Exported));
                 }
 
                 if let Some(ns) = export.res.ns() {
