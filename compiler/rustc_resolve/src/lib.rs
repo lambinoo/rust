@@ -1555,7 +1555,7 @@ impl<'a> Resolver<'a> {
             let module = self.get_module(module_id.to_def_id());
 
             for export in pub_exports.into_iter() {
-                if let Some(export_def_id) = export.res.def_id().as_local() {
+                if let Some(export_def_id) = export.res.opt_def_id().and_then(|id| id.as_local()) {
                     self.set_access_level_def_id(export_def_id, Some(AccessLevel::Public));
                 }
 
