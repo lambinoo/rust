@@ -26,7 +26,7 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
             ast::ItemKind::MacCall(..) | ast::ItemKind::MacroDef(..) => None,
 
             // Resolved in privacy when hir is available
-            ast::ItemKind::Impl(..) => None,
+            ast::ItemKind::Impl(..) => return,
 
             ast::ItemKind::ForeignMod(..) => self.prev_level,
 
@@ -65,7 +65,7 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
                 for variant in variants {
                     let variant_level = self.r.set_access_level(variant.id, access_level);
                     if let Some(ctor_id) = variant.data.ctor_id() {
-                        self.r.set_access_level(ctor_id, access_level);
+                         self.r.set_access_level(ctor_id, access_level);
                     }
 
                     for field in variant.data.fields() {
@@ -110,7 +110,9 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
             | ast::ItemKind::TraitAlias(..)
             | ast::ItemKind::MacroDef(..)
             | ast::ItemKind::MacCall(..)
-            | ast::ItemKind::Fn(..) => {}
+            | ast::ItemKind::Fn(..) => {
+                return;
+            }
         }
 
         let orig_level = std::mem::replace(&mut self.prev_level, access_level);

@@ -1540,6 +1540,20 @@ impl<'a> Resolver<'a> {
         self.set_exports_access_level(CRATE_DEF_ID);
         let mut privacy_visitor =
             access_levels::PrivacyVisitor::new(self, Some(AccessLevel::Public));
+
+        // We need a double pass to correctly resolve exports
+        // as an item can be defined in a private module
+        // and exported later on
+        //
+        // mod foo {
+        //     pub enum Hungry;
+        // }
+        //
+        // pub mod bar {
+        //     pub use super::foo::*;
+        // }
+
+        visit::walk_crate(&mut privacy_visitor, krate);
         visit::walk_crate(&mut privacy_visitor, krate);
 
         tracing::info!("resolve::access_levels: {:#?}", self.access_levels);
@@ -1552,6 +1566,7 @@ impl<'a> Resolver<'a> {
                 .filter(|ex| ex.vis == Visibility::Public)
                 .cloned()
                 .collect::<Vec<_>>();
+
             let module = self.get_module(module_id.to_def_id());
 
             for export in pub_exports.into_iter() {
@@ -1579,7 +1594,7 @@ impl<'a> Resolver<'a> {
             self.set_access_level(import.id, access_level);
 
             match import.kind {
-                ImportKind::Single { additional_ids, .. } => {
+                ImportKind::Single { additional_ids, source, target, .. } => {
                     self.set_access_level(additional_ids.0, access_level);
                     self.set_access_level(additional_ids.1, access_level);
                 }
