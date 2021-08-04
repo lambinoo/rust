@@ -12,8 +12,9 @@ use crate::error;
 use crate::fmt;
 use crate::io::Error;
 
-pub use bufreader::BufReader;
-pub use bufwriter::BufWriter;
+#[stable(feature = "rust1", since = "1.0.0")]
+pub use self::{bufreader::BufReader, bufwriter::BufWriter};
+
 #[unstable(feature = "bufwriter_into_parts", issue = "80690")]
 pub use bufwriter::WriterPanicked;
 pub use linewriter::LineWriter;

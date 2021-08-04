@@ -12,11 +12,10 @@ pub use self::{
     double_ended::DoubleEndedIterator,
     exact_size::ExactSizeIterator,
     iterator::Iterator,
-    marker::{FusedIterator, TrustedLen}
+    marker::{FusedIterator, TrustedLen},
 };
 
 #[unstable(issue = "none", feature = "inplace_iteration")]
 pub use self::marker::InPlaceIterable;
 #[unstable(feature = "trusted_step", issue = "85731")]
 pub use self::marker::TrustedStep;
-
