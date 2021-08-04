@@ -13,12 +13,11 @@ use crate::fmt;
 use crate::io::Error;
 
 #[stable(feature = "rust1", since = "1.0.0")]
-pub use self::{bufreader::BufReader, bufwriter::BufWriter};
+pub use self::{bufreader::BufReader, bufwriter::BufWriter, linewriter::LineWriter};
+use linewritershim::LineWriterShim;
 
 #[unstable(feature = "bufwriter_into_parts", issue = "80690")]
 pub use bufwriter::WriterPanicked;
-pub use linewriter::LineWriter;
-use linewritershim::LineWriterShim;
 
 /// An error returned by [`BufWriter::into_inner`] which combines an error that
 /// happened while writing out the buffer, and the buffered writer object
