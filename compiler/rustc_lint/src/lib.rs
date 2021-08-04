@@ -89,7 +89,9 @@ use unused::*;
 
 /// Useful for other parts of the compiler / Clippy.
 pub use builtin::SoftLints;
-pub use context::{CheckLintNameResult, EarlyContext, LateContext, LintContext, LintStore, FindLintError};
+pub use context::{
+    CheckLintNameResult, EarlyContext, FindLintError, LateContext, LintContext, LintStore,
+};
 pub use early::check_ast_crate;
 pub use late::check_crate;
 pub use passes::{EarlyLintPass, LateLintPass};
