@@ -22,7 +22,7 @@ impl<'r, 'a> PrivacyVisitor<'r, 'a> {
 impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
     fn visit_item(&mut self, item: &'ast ast::Item) {
         let inherited_item_level = match item.kind {
-            // TODO Is this the correct behavior for those macros?
+            // FIXME Is this the correct behavior for those macros?
             ast::ItemKind::MacCall(..) | ast::ItemKind::MacroDef(..) => None,
 
             // Resolved in privacy when hir is available
