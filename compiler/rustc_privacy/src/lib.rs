@@ -586,18 +586,11 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
     }
 
     fn visit_item(&mut self, item: &'tcx hir::Item<'tcx>) {
-        if let hir::ItemKind::Impl(ref impl_data) = item.kind {
-            let impl_level =
-                Option::<AccessLevel>::of_impl(item.hir_id(), self.tcx, &self.access_levels);
-            self.update(item.def_id, impl_level);
-            for nested in impl_data.items {
-                if impl_data.of_trait.is_some() || nested.vis.node.is_pub() {
-                    self.update(nested.id.def_id, impl_level);
-                }
-            }
-        }
-
-        let item_level = self.get(item.def_id);
+        let item_level = if let hir::ItemKind::Impl { .. } = item.kind {
+            Option::<AccessLevel>::of_impl(item.hir_id(), self.tcx, &self.access_levels)
+        } else {
+            self.get(item.def_id)
+        };
 
         // Mark all items in interfaces of reachable items as reachable.
         match item.kind {
@@ -656,6 +649,18 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             }
             // Visit everything except for private impl items.
             hir::ItemKind::Impl(ref impl_) => {
+                for impl_item_ref in impl_.items {
+                    tracing::info!(
+                        "impl_item_ref: ident={:?}, def_id={:?}",
+                        impl_item_ref.ident,
+                        impl_item_ref.id.def_id
+                    );
+                    if impl_.of_trait.is_some() || impl_item_ref.vis.node.is_pub() {
+                        tracing::info!("> set to {:?}", item_level);
+                        self.update(impl_item_ref.id.def_id, item_level);
+                    }
+                }
+
                 if item_level.is_some() {
                     self.reach(item.hir_id(), item_level).generics().predicates().ty().trait_ref();
 

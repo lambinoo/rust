@@ -39,7 +39,9 @@ use rustc_errors::{struct_span_err, Applicability, DiagnosticBuilder};
 use rustc_expand::base::{DeriveResolutions, SyntaxExtension, SyntaxExtensionKind};
 use rustc_hir::def::Namespace::*;
 use rustc_hir::def::{self, CtorOf, DefKind, NonMacroAttrKind, PartialRes};
-use rustc_hir::def_id::{CrateNum, DefId, DefIdMap, DefPathHash, LocalDefId, CRATE_DEF_INDEX};
+use rustc_hir::def_id::{
+    CrateNum, DefId, DefIdMap, DefPathHash, LocalDefId, CRATE_DEF_ID, CRATE_DEF_INDEX,
+};
 use rustc_hir::definitions::{DefKey, DefPathData, Definitions};
 use rustc_hir::TraitCandidate;
 use rustc_index::vec::IndexVec;
@@ -1035,7 +1037,7 @@ pub struct Resolver<'a> {
 
     main_def: Option<MainDefinition>,
 
-    nodes_access_level: AccessLevels,
+    access_levels: AccessLevels,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
@@ -1398,7 +1400,7 @@ impl<'a> Resolver<'a> {
             legacy_const_generic_args: Default::default(),
             main_def: Default::default(),
 
-            nodes_access_level: Default::default(),
+            access_levels: Default::default(),
         };
 
         let root_parent_scope = ParentScope::module(graph_root, &resolver);
@@ -1441,7 +1443,7 @@ impl<'a> Resolver<'a> {
         let maybe_unused_extern_crates = self.maybe_unused_extern_crates;
         let glob_map = self.glob_map;
         let main_def = self.main_def;
-        let access_levels = self.nodes_access_level;
+        let access_levels = self.access_levels;
         ResolverOutputs {
             definitions,
             cstore: Box::new(self.crate_loader.into_cstore()),
@@ -1464,7 +1466,7 @@ impl<'a> Resolver<'a> {
     pub fn clone_outputs(&self) -> ResolverOutputs {
         ResolverOutputs {
             definitions: self.definitions.clone(),
-            access_levels: self.nodes_access_level.clone(),
+            access_levels: self.access_levels.clone(),
             cstore: Box::new(self.cstore().clone()),
             visibilities: self.visibilities.clone(),
             extern_crate_map: self.extern_crate_map.clone(),
@@ -1535,31 +1537,31 @@ impl<'a> Resolver<'a> {
     fn resolve_access_level(&mut self, krate: &Crate) {
         self.set_access_level(CRATE_NODE_ID, Some(AccessLevel::Public));
 
+        self.set_exports_access_level(CRATE_DEF_ID);
         let mut privacy_visitor =
             access_levels::PrivacyVisitor::new(self, Some(AccessLevel::Public));
         visit::walk_crate(&mut privacy_visitor, krate);
 
-        self.set_exports_access_level();
-
-        tracing::info!("nodes_access_level: {:#?}", self.nodes_access_level);
+        tracing::info!("resolve::access_levels: {:#?}", self.access_levels);
     }
 
-    fn set_exports_access_level(&mut self) {
-        let root = self.graph_root();
-        let exports = root.def_id().and_then(|id| self.export_map.get(&id.expect_local()));
+    fn set_exports_access_level(&mut self, module_id: LocalDefId) {
+        if let Some(exports) = self.export_map.get(&module_id) {
+            let pub_exports = exports
+                .iter()
+                .filter(|ex| ex.vis == Visibility::Public)
+                .cloned()
+                .collect::<Vec<_>>();
+            let module = self.get_module(module_id.to_def_id());
 
-        if let Some(exports) = exports.cloned() {
-            let public_exports =
-                exports.iter().filter(|ex| ex.vis == Visibility::Public).collect::<Vec<_>>();
-
-            for export in public_exports {
+            for export in pub_exports.into_iter() {
                 if let Some(export_def_id) = export.res.def_id().as_local() {
                     self.set_access_level_def_id(export_def_id, Some(AccessLevel::Public));
                 }
 
                 if let Some(ns) = export.res.ns() {
                     let key = self.new_key(export.ident, ns);
-                    let name_res = self.resolution(root, key);
+                    let name_res = self.resolution(module, key);
                     if let Some(binding) = name_res.borrow().binding() {
                         self.set_binding_to_public(binding);
                     }
@@ -1602,9 +1604,9 @@ impl<'a> Resolver<'a> {
         def_id: LocalDefId,
         access_level: Option<AccessLevel>,
     ) -> Option<AccessLevel> {
-        let old_level = self.nodes_access_level.map.get(&def_id).copied();
+        let old_level = self.access_levels.map.get(&def_id).copied();
         if old_level < access_level {
-            self.nodes_access_level.map.insert(def_id, access_level.unwrap());
+            self.access_levels.map.insert(def_id, access_level.unwrap());
             access_level
         } else {
             old_level

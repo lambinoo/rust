@@ -76,10 +76,11 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
             ast::ItemKind::Struct(ref def, _) | ast::ItemKind::Union(ref def, _) => {
                 if let Some(ctor_id) = def.ctor_id() {
                     self.r.set_access_level(ctor_id, access_level);
-                    for field in def.fields() {
-                        if field.vis.kind.is_pub() {
-                            self.r.set_access_level(field.id, access_level);
-                        }
+                }
+
+                for field in def.fields() {
+                    if field.vis.kind.is_pub() {
+                        self.r.set_access_level(field.id, access_level);
                     }
                 }
             }
@@ -90,23 +91,20 @@ impl<'r, 'ast> Visitor<'ast> for PrivacyVisitor<'ast, 'r> {
             }
             ast::ItemKind::Impl(ref impl_kind) => {
                 for nested in impl_kind.items.iter() {
-                    tracing::info!(
-                        "ast::ItemKind::Impl: nested={:?}",
-                        self.r.opt_local_def_id(nested.id)
-                    );
                     if impl_kind.of_trait.is_some() || nested.vis.kind.is_pub() {
                         self.r.set_access_level(nested.id, access_level);
                     }
                 }
             }
-
+            ast::ItemKind::Mod(..) => {
+                self.r.set_exports_access_level(self.r.local_def_id(item.id));
+            }
             ast::ItemKind::ExternCrate(..)
             | ast::ItemKind::Use(..)
             | ast::ItemKind::Static(..)
             | ast::ItemKind::Const(..)
             | ast::ItemKind::GlobalAsm(..)
             | ast::ItemKind::TyAlias(..)
-            | ast::ItemKind::Mod(..)
             | ast::ItemKind::TraitAlias(..)
             | ast::ItemKind::MacroDef(..)
             | ast::ItemKind::MacCall(..)
