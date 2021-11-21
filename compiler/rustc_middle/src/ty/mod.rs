@@ -20,8 +20,6 @@ pub use generics::*;
 pub use vtable::*;
 
 use crate::hir::exports::ExportMap;
-use crate::ich::StableHashingContext;
-use crate::middle::cstore::CrateStoreDyn;
 use crate::middle::privacy::AccessLevels;
 use crate::mir::{Body, GeneratorLayout};
 use crate::traits::{self, Reveal};

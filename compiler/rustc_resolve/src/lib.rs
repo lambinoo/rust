@@ -52,7 +52,6 @@ use rustc_hir::TraitCandidate;
 use rustc_index::vec::IndexVec;
 use rustc_metadata::creader::{CStore, CrateLoader};
 use rustc_middle::hir::exports::ExportMap;
-use rustc_middle::middle::cstore::{CrateStore, MetadataLoaderDyn};
 use rustc_middle::middle::privacy::AccessLevels;
 use rustc_middle::span_bug;
 use rustc_middle::ty::query::Providers;

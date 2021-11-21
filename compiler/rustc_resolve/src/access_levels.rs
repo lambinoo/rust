@@ -80,7 +80,7 @@ impl<'r, 'a> AccessLevelsVisitor<'r, 'a> {
                 .cloned()
                 .collect::<Vec<_>>();
 
-            let module = self.r.get_module(module_id.to_def_id());
+            let module = self.r.get_module(module_id.to_def_id()).unwrap();
             for export in pub_exports.into_iter() {
                 if let Some(export_def_id) = export.res.opt_def_id().and_then(|id| id.as_local()) {
                     self.set_access_level_def_id(export_def_id, Some(AccessLevel::Exported));
@@ -209,7 +209,7 @@ impl<'r, 'ast> Visitor<'ast> for AccessLevelsVisitor<'ast, 'r> {
                 }
             }
             ast::ItemKind::Trait(ref trait_kind) => {
-                for nested in trait_kind.4.iter() {
+                for nested in trait_kind.items.iter() {
                     self.set_access_level(nested.id, access_level);
                 }
             }
