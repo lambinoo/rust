@@ -708,7 +708,9 @@ impl Visitor<'tcx> for EmbargoVisitor<'tcx> {
             // Visit everything except for private impl items.
             hir::ItemKind::Impl(ref impl_) => {
                 for impl_item_ref in impl_.items {
-                    if impl_.of_trait.is_some() || self.tcx.visibility(impl_item_ref.id.def_id) == ty::Visibility::Public {
+                    if impl_.of_trait.is_some()
+                        || self.tcx.visibility(impl_item_ref.id.def_id) == ty::Visibility::Public
+                    {
                         self.update(impl_item_ref.id.def_id, item_level);
                     }
                 }

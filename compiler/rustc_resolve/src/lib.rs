@@ -1059,7 +1059,7 @@ pub struct Resolver<'a> {
     proc_macros: Vec<NodeId>,
     confused_type_with_std_module: FxHashMap<Span, Span>,
 
-    access_levels: AccessLevels
+    access_levels: AccessLevels,
 }
 
 /// Nothing really interesting here; it just provides memory for the rest of the crate.
